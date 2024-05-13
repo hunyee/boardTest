@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="kr.or.ddit.board.dao.IBoardDAO">
+	<sql id="searchFrag">
+		<where>
+		     <if test="@org.apache.commons.lang3.StringUtils@isNotBlank(searchWord)">
+		     	<choose>
+		     		<when test='"title".equals(searchType)'>
+		     			BO_TITLE LIKE '%'||#{searchWord}||'%'
+		     		</when>
+		     		<when test='"writer".equals(searchType)'>
+		     			BO_WRITER LIKE '%'||#{searchWord}||'%'
+		     		</when>
+		     		<when test='"content".equals(searchType)'>
+		     			BO_CONTENT LIKE '%'||#{searchWord}||'%'
+		     		</when>
+		     		<when test='@org.apache.commons.lang3.StringUtils@isBlank(searchType)'>
+		     			BO_TITLE LIKE '%'||#{searchWord}||'%' OR
+		     			BO_WRITER LIKE '%'||#{searchWord}||'%' OR
+		     			BO_CONTENT LIKE '%'||#{searchWord}||'%'
+		     		</when>
+		     	</choose>
+		     </if>
+		</where>
+	</sql>
+	<sql id="boardColumns">
+   		BO_NO,    BO_TITLE,    BO_WRITER,
+	    BO_PASS,    TO_CHAR(BO_DATE, 'YYYY-MM-DD HH:MI') BO_DATE,
+	    BO_CONTENT,
+	    CODE_ID,    BO_HIT,    BO_REPORT,
+	    BO_LIKE,    BO_HATE,    BO_IP,
+	    BO_MAIL,    BO_PARENT
+	</sql>
+	<select id="selectBoardCount" resultType="long" parameterType="PagingVO">
+		SELECT COUNT(BO_NO)
+		FROM BOARD
+		<include refid="searchFrag" />
+	</select>
+	<select id="selectBoardList" resultType="BoardVO" parameterType="PagingVO">
+		WITH ORDEREDBOARD AS(
+			SELECT
+			    BO_NO, LPAD('  ┗RE:', (LEVEL-1)*6, '&amp;nbsp;')||BO_TITLE AS BO_TITLE, 
+			    BO_WRITER, BO_HIT, BO_DATE
+			FROM   BOARD
+			<include refid="searchFrag" />
+			START WITH BO_PARENT IS NULL
+			CONNECT BY PRIOR BO_NO = BO_PARENT
+			ORDER SIBLINGS BY BO_NO DESC
+		)
+		SELECT *
+		FROM (
+		    SELECT ROWNUM RNUM, ORDEREDBOARD.*
+		    FROM ORDEREDBOARD
+		) A
+		<![CDATA[
+			WHERE RNUM >= #{startRow} AND RNUM <= #{endRow}
+		]]>
+	</select>
+	<resultMap type="BoardVO" id="boardMap" autoMapping="true">
+		<id property="bo_no" column="BO_NO"/>
+		<collection property="savedPdsList" autoMapping="true" ofType="PdsVO">
+			<id property="pds_no" column="PDS_NO"/>
+		</collection>
+	</resultMap>
+	<select id="selectBoard" parameterType="int" resultMap="boardMap">
+		SELECT
+			A.BO_NO,    BO_TITLE,    BO_WRITER,
+		    BO_PASS,    TO_CHAR(BO_DATE, 'YYYY-MM-DD HH:MI') BO_DATE,
+		    BO_CONTENT,
+		    A.CODE_ID,    BO_HIT,    BO_REPORT,
+		    BO_LIKE,    BO_HATE,    BO_IP,
+		    BO_MAIL,    BO_PARENT
+		    , CODE_NAME
+		    , PDS_NO, PDS_FILENAME, PDS_SAVEPATH
+    		, PDS_MIME, PDS_FANCYSIZE, PDS_SIZE  
+		FROM BOARD A INNER JOIN SIMPLECODE B ON (A.CODE_ID = B.CODE_ID)
+				   LEFT OUTER JOIN PDS C ON (A.BO_NO = C.BO_NO)
+		WHERE A.BO_NO = #{board.bo_no}
+	</select>
+	<update id="incrementHit" parameterType="int">
+			UPDATE BOARD
+			SET
+			BO_HIT = BO_HIT + 1
+			WHERE BO_NO = #{bo_no}
+	</update>
+	<update id="incrementReport" parameterType="int">
+		UPDATE BOARD
+		SET
+		BO_REPORT = BO_REPORT + 1
+		WHERE  BO_NO = #{bo_no}
+	</update>
+	<update id="incrementLikeOrHate" parameterType="BoardVO">
+		UPDATE BOARD
+		SET
+		<if test="likeFlag">
+			BO_LIKE = BO_LIKE + 1
+		</if>
+		<if test="not likeFlag">
+			BO_HATE = BO_HATE + 1
+		</if>
+		WHERE  BO_NO = #{bo_no}
+	</update>
+	<insert id="insertBoard" parameterType="BoardVO">
+		<selectKey resultType="int" keyProperty="bo_no" order="BEFORE">
+			SELECT BOARD_SEQ.NEXTVAL FROM DUAL
+		</selectKey>
+		INSERT INTO BOARD (
+		    BO_NO,    BO_TITLE,    BO_WRITER,
+		    BO_PASS,    BO_DATE,    BO_CONTENT,
+		    CODE_ID,    BO_IP,
+		    BO_MAIL
+		    <if test="bo_parent != null and bo_parent gt 0">
+		    ,    BO_PARENT
+		    </if>
+		) VALUES (
+			#{bo_no},    #{bo_title},    #{bo_writer},
+		    #{bo_pass},    SYSDATE,    #{bo_content,jdbcType=CLOB},
+		    #{code_id},    #{bo_ip},
+		    #{bo_mail,jdbcType=VARCHAR}
+		    <if test="bo_parent != null and bo_parent gt 0">
+		    ,    #{bo_parent}
+		    </if>
+		)
+	</insert>
+	<delete id="deleteBoard" parameterType="int">
+		DELETE FROM BOARD
+		WHERE BO_NO = #{bo_no}		
+	</delete>
+	
+	<update id="updateBoard" parameterType="BoardVO">
+		UPDATE BOARD
+	    SET
+	    BO_TITLE	=	#{bo_title},
+	    BO_CONTENT	=	#{bo_content,jdbcType=CLOB},
+	    BO_MAIL		=	#{bo_mail,jdbcType=VARCHAR}
+		WHERE BO_NO =#{bo_no} AND BO_PASS = #{bo_pass}
+	</update>
+</mapper>
+
+
+
+
+
+
+
+
+
